@@ -21,21 +21,21 @@
     .NOTES
     File Name: share.ps1
     Author   : Fomin Danil (AB-124)
-    Version  : 1.5
+    Version  : 1.53
     Date     : 04.12.2023
 #>
 
 [CmdletBinding()]
 param (
-    [Parameter(mandatory=$true)]
+    [Parameter(Mandatory=$true)]
     [string]$folderPath,
-    [Parameter(mandatory=$true)]
+    [Parameter(Mandatory=$true)]
     [string]$shareName,
-    [Parameter(mandatory=$false)]
+    [Parameter(Mandatory=$false)]
     [string]$userName = $null,
     [switch]$help
 )
-    
+
 if ($help) {
     Get-Help $MyInvocation.MyCommand.Definition
     exit
@@ -47,51 +47,56 @@ function CreateSharedFolder {
         [string]$shareName
     )
 
-    if (-not (Test-Path $folderPath)) {
-        New-Item -ItemType Directory -Path $folderPath
-        Write-Host "Created a new folder at the specified path"
+    if (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue) {
+        Write-Host "The specified shared resource already exists! Removing the existing one..."
+        Remove-SmbShare -Name $shareName -Force
     }
 
-    New-SmbShare -Name $shareName -Path $folderPath -FullAccess 'Everyone'
-}
+    if (-not (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue)) {
+        Write-Host "Creating a new shared resource..."
 
+        if (-not (Test-Path $folderPath)) {
+            New-Item -ItemType Directory -Path $folderPath
+            Write-Host "Created a new folder at the specified path"
+        }
+
+        $shareDescription = "Shared Folder"
+        New-SmbShare -Name $shareName -Path $folderPath -Description $shareDescription
+    }
+}
 
 function GrantShareAccess {
     param (
         [string]$shareName,
-        [string]$userName,
-        [string]$folderPath
+        [string]$userName
     )
 
-    if (-not (Get-SmbShare -Name $shareName)) {
-        Write-Host "The specified shared resource does not exist! Creating a new one..."
-
-        $shareDescription = "Shared Folder"
-        New-SmbShare -Name $shareName -Path $folderPath -Description $shareDescription -ReadAccess 'Everyone'
+    if (-not (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue)) {
+        Write-Host "The specified user was not found!"
+        exit
     }
 
-    if (-not (Get-LocalUser -Name $userName)) {
-        Write-Host "The specified user was not found!"
+    if (-not (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue)) {
+        Write-Host "The specified shared resource does not exist!"
         exit
     }
 
     Grant-SmbShareAccess -Name $shareName -AccountName $userName -AccessRight Read
 }
 
-
 if (-not $folderPath) {
     $folderPath = Read-Host "Please specify the full path of the folder"
 }
-    
+
 if (-not $shareName) {
     $shareName = Read-Host "Please specify the name of the shared resource"
     exit
 }
-    
+
 CreateSharedFolder -folderPath $folderPath -shareName $shareName
-        
+
 if ($userName) {
-    GrantShareAccess -shareName $shareName -userName $userName -folderPath $folderPath
+    GrantShareAccess -shareName $shareName -userName $userName
 }
 
 
